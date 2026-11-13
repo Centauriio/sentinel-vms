@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 # Install the optional capture add-on, never start a camera or restart the VMS.
 set -euo pipefail
-if [[ $# -ne 0 ]]; then echo 'Usage: sudo bash install.sh' >&2; exit 2; fi
+web_uid=""
+listen_address=""
+skip_windows=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --web-uid) web_uid="${2:?Missing web-server UID}"; shift 2 ;;
+        --listen-address) listen_address="${2:?Missing private listen address}"; shift 2 ;;
+        --skip-windows-helper) skip_windows=1; shift ;;
+        --help) echo 'Usage: sudo bash install.sh [--web-uid UID] [--listen-address PRIVATE_IP] [--skip-windows-helper]'; exit 0 ;;
+        *) echo 'Unknown USB installer option.' >&2; exit 2 ;;
+    esac
+done
 if [[ $(id -u) -ne 0 ]]; then echo 'Run with sudo.' >&2; exit 1; fi
 here="$(cd "$(dirname "$0")" && pwd)"
 if [[ ! -d /run/systemd/system ]] || ! command -v systemctl >/dev/null; then
@@ -47,6 +58,18 @@ python_bin=/usr/bin/python3
 v4l2_bin="$(command -v v4l2-ctl)"
 
 install -d -m 0755 /opt/sentinel-usb
+if [[ -f /etc/sentinel-usb/tools.json ]]; then
+    if [[ -z "$web_uid" ]]; then web_uid="$("$python_bin" -c 'import json; print(json.load(open("/etc/sentinel-usb/tools.json")).get("webUID", ""))')"; fi
+    if [[ -z "$listen_address" ]]; then listen_address="$("$python_bin" -c 'import json; print(json.load(open("/etc/sentinel-usb/tools.json")).get("listen", ""))')"; fi
+fi
+listen_address="${listen_address:-127.0.0.1}"
+if [[ -z "$web_uid" ]]; then web_uid="$(id -u sentinel 2>/dev/null || echo 0)"; fi
+"$python_bin" - "$web_uid" "$listen_address" <<'VALIDATE'
+import ipaddress, sys
+assert sys.argv[1].isdigit() and 0 <= int(sys.argv[1]) <= 2147483647, 'Invalid web-server UID'
+ip = ipaddress.ip_address(sys.argv[2])
+assert not ip.is_unspecified and not ip.is_multicast and (ip.is_loopback or ip.is_private), 'Use a specific private listen address'
+VALIDATE
 mtx_bin=/opt/sentinel-usb/mediamtx
 # Reuse a compatible bundled version, but never overwrite the VMS's MediaMTX.
 for candidate in /opt/sentinel/mediamtx /opt/sentinel-usb/mediamtx; do
@@ -72,13 +95,16 @@ if [[ ! -x "$mtx_bin" ]] || [[ "$("$mtx_bin" --version 2>/dev/null)" != v1.21.3 
     install -m 0644 "$temp_dir/LICENSE" /opt/sentinel-usb/MediaMTX-LICENSE
 fi
 getent group video >/dev/null || groupadd --system video
+getent group sentinel-usb-agent >/dev/null || groupadd --system sentinel-usb-agent
 if ! id sentinel-usb >/dev/null 2>&1; then
     useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin sentinel-usb
 fi
 usermod -aG video sentinel-usb
 install -d -o root -g sentinel-usb -m 0750 /etc/sentinel-usb
 install -m 0755 "$here/sentinel_usb.py" /opt/sentinel-usb/sentinel_usb.py
+install -m 0755 "$here/usb_control.py" /opt/sentinel-usb/usb_control.py
 install -m 0644 "$here/sentinel-usb@.service" /etc/systemd/system/sentinel-usb@.service
+install -m 0644 "$here/sentinel-usb-control.service" /etc/systemd/system/sentinel-usb-control.service
 install -d -m 0755 /opt/sentinel-usb/windows /usr/local/bin
 install -m 0644 "$here"/*.ps1 /opt/sentinel-usb/windows/
 install -m 0644 "$here/README.md" /opt/sentinel-usb/README.md
@@ -87,18 +113,30 @@ cat > /usr/local/bin/sentinel-usb <<'WRAPPER'
 exec /usr/bin/python3 /opt/sentinel-usb/sentinel_usb.py "$@"
 WRAPPER
 chmod 0755 /usr/local/bin/sentinel-usb
-"$python_bin" - "$ffmpeg_bin" "$v4l2_bin" "$mtx_bin" <<'PY'
+"$python_bin" - "$ffmpeg_bin" "$v4l2_bin" "$mtx_bin" "$web_uid" "$listen_address" <<'PY'
 import json, os, sys
 path = '/etc/sentinel-usb/tools.json'
 with open(path, 'w') as f:
-    json.dump(dict(zip(('ffmpeg', 'v4l2', 'mediamtx'), sys.argv[1:])), f)
+    value = dict(zip(('ffmpeg', 'v4l2', 'mediamtx'), sys.argv[1:4]))
+    value.update(webUID=int(sys.argv[4]), listen=sys.argv[5])
+    json.dump(value, f)
 os.chmod(path, 0o640)
 PY
 chown root:sentinel-usb /etc/sentinel-usb/tools.json
 systemctl daemon-reload
+systemctl enable --now sentinel-usb-control.service
+# Upgrade only the control broker; camera capture units remain under explicit user control.
+systemctl restart sentinel-usb-control.service
 sentinel-usb doctor
 echo 'USB add-on installed. Existing camera configurations are preserved. No camera was started.'
-echo 'Next: sudo sentinel-usb devices'
+echo 'Next: open Sentinel Cameras and choose Add USB camera.'
 if grep -qi microsoft /proc/sys/kernel/osrelease; then
-    echo 'WSL detected: Windows setup scripts are in /opt/sentinel-usb/windows. Choose USB/IP or WindowsCapture there.'
+    if [[ "$skip_windows" -eq 0 ]]; then
+        powershell=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+        if [[ ! -x "$powershell" || -z "${WSL_DISTRO_NAME:-}" ]] || ! command -v wslpath >/dev/null; then
+            echo 'Linux setup completed. Windows interop is unavailable; run the included Install-SentinelWslUsb.ps1 once from Windows to install its camera helper.' >&2
+            exit 1
+        fi
+        "$powershell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(wslpath -w /opt/sentinel-usb/windows/Install-SentinelWslUsb.ps1)" -Distribution "$WSL_DISTRO_NAME"
+    fi
 fi

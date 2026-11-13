@@ -1,196 +1,168 @@
-# USB camera add-on
+# USB cameras in Sentinel
 
-This optional add-on turns a Linux V4L2 camera into an authenticated RTSP source
-that Sentinel can record and display. It installs alongside the server and also
-works on a separate Linux capture host. The Electron operator remains a viewer:
-install this add-on on the machine physically connected to the camera.
+The optional USB add-on installs on the Linux recording host. In **Cameras**, choose
+**Add USB camera**, select a connected camera and one of its reported quality
+modes, then add it. The camera starts stopped. Use **Start capture**, **Stop capture**,
+and **USB quality** in the camera list. Sentinel creates and protects the connection
+automatically; users never need a terminal command or a stream URL for routine use.
+The ordinary Edit form still controls name, groups, recording and retention.
+Capture and recording are separate: stopping capture also removes the live feed.
+Deleting a USB camera stops/removes its capture service but keeps existing footage.
 
-Camera setup uses `sentinel-usb`; add its URL through Sentinel's existing camera
-form. There is no new web setup page in this version. Installing the add-on does
-not select a camera, start capture, or change the VMS database.
+## Installation
 
-## Install
-
-Supported automatic dependency setup: Debian/Ubuntu, amd64/arm64, with systemd
-running. Other distributions can provide the dependencies themselves, then run
-the installer. Dependencies are Python 3, V4L2 utilities, FFmpeg with V4L2 input
-and libx264 encoding, curl, CA certificates, tar and gzip. The VMS's bundled
-decode-oriented FFmpeg is not assumed to support USB encoding.
-
-From a Linux release archive:
+Automatic dependencies support Debian/Ubuntu on amd64/arm64 with systemd running.
+From a Linux release archive built from this branch:
 
 ```sh
 sudo ./install.sh --with-usb
 ```
 
-To add capture without reinstalling the VMS, from this repository:
+To add USB support to an existing host running this branch's VMS:
 
 ```sh
 sudo bash linux/packaging/usb/install.sh
 ```
 
-The installer checks executable capabilities, installs missing packages through
-apt, and verifies the exact MediaMTX 1.21.3 archive SHA-256 before installing it.
-It uses its own MediaMTX when the VMS has a different version. Reinstalling
-preserves camera configurations and credentials and does not enable/start any
-camera. Existing running capture instances should be stopped before upgrading
-and started afterward to load the new files. OS packages are not removed by
-camera removal because other applications may use them.
+The installer checks Python 3, V4L2 utilities, FFmpeg V4L2/libx264 capabilities,
+curl, CA certificates, tar and gzip; apt installs missing prerequisites. MediaMTX
+1.21.3 is pinned and its archive checksum verified. Other distributions must
+supply these dependencies themselves. A Docker image rebuild alone does not
+install host services or expose physical devices.
 
-## Native Linux or an already attached WSL camera
+Reinstallation preserves camera credentials and host networking/UID settings.
+It refreshes the control service; it does not choose a camera or start a new one.
+Stop running captures in the web UI before upgrading, then start them afterward
+so they load the new capture code. USB cameras remain stopped after a host reboot;
+start them from the camera list. The control service starts automatically.
 
-```sh
-sudo sentinel-usb doctor
-sudo sentinel-usb devices
-sudo sentinel-usb configure entrance \
-  --device /dev/v4l/by-id/YOUR-CAMERA-video-index0 \
-  --format mjpeg --width 1920 --height 1080 --fps 30
-sudo sentinel-usb start entrance
-sudo sentinel-usb url entrance
-```
+## Native Linux
 
-Choose a path and an advertised format/size/frame rate from `devices`; prefer
-`/dev/v4l/by-id/` for stable identity after replugging. A metadata-only node is not
-selectable. Discrete MJPEG, YUYV and NV12 modes are supported. Stepwise/continuous
-mode ranges are not automatically guessed. Unsupported 1080p60 is rejected, not
-silently replaced with 30 fps. Multiple instances require different `--port`
-values; the default is 18555 because Sentinel already uses 18554 internally.
+Supported inputs are V4L2 capture devices with discrete MJPEG, YUYV or NV12 modes.
+Stable `/dev/v4l/by-id` identities are preferred over numbered video nodes. Metadata
+nodes and unsupported modes are omitted. Only reported resolution/frame-rate
+combinations are offered: a 1080p30 camera will not be offered 1080p60. Range-only
+capabilities are not guessed. Encoding is H.264 software encoding with no audio;
+higher quality needs more CPU. Camera selection targets the server's devices,
+not cameras connected to the browser's computer.
 
-Paste the credential-bearing URL into Sentinel's Add camera form on the **same
-host**, choose RTSP/TCP, and verify live view and recording. Treat `url` output as
-a secret. The bridge does not save footage; recording is owned by Sentinel.
+## WSL and Windows cameras
 
-```sh
-sudo sentinel-usb status entrance
-sudo journalctl -u sentinel-usb@entrance -f
-sudo sentinel-usb stop entrance
-# Optional automatic startup, only when deliberately selected:
-sudo sentinel-usb start entrance --on-boot
-# Stop, disable and remove only this add-on instance and its credentials:
-sudo sentinel-usb remove entrance
-```
+The Linux installer detects WSL and, when Windows interop is available, invokes
+the included Windows installer. It checks/installs FFmpeg through winget, enrolls
+the default WSL user for helper access, and registers a hidden per-user Windows
+logon task. Windows camera inventory then appears in the same web camera picker.
+An initial winget/UAC prompt may be required by the Windows package installer.
 
-Stop also disables boot startup. A camera recording switch inside Sentinel does
-not stop the add-on capture process. Missing/busy devices and terminated capture
-processes trigger retries every ten seconds while the service remains enabled;
-`stop` ends retries. A stable symlink allows the same device to resume after
-replugging. Do not rely on `/dev/video0` retaining its identity.
-
-## WSL setup
-
-Use WSL2 with systemd enabled. The Linux installer diagnoses absent systemd but
-does not change `/etc/wsl.conf`, shut down WSL, or restart Dokploy. Follow
-[Microsoft's systemd instructions](https://learn.microsoft.com/en-us/windows/wsl/systemd)
-if a planned WSL restart is needed. Run the Linux installer in the selected
-distribution. Copy **all four PowerShell files, including WslUsb.Common.ps1**, from
-this directory (also installed under `/opt/sentinel-usb/windows`) to one folder
-on the Windows host.
-
-### Windows capture (recommended when another application owns USB/IP)
-
-In Windows PowerShell:
+For an installation over SSH or without Windows interop, finish the one-time
+Windows helper installation from Windows PowerShell using all the shipped `.ps1`
+files together (also available at `/opt/sentinel-usb/windows`):
 
 ```powershell
 .\Install-SentinelWslUsb.ps1 -Backend WindowsCapture -Distribution Ubuntu
-ffmpeg -hide_banner -list_devices true -f dshow -i dummy
-ffmpeg -hide_banner -list_options true -f dshow -i 'YOUR CAMERA NAME'
 ```
 
-The setup installs Gyan.FFmpeg through winget only if FFmpeg is absent and checks
-DirectShow/libx264 support. Enumeration commands normally return a nonzero exit
-code after printing modes. If winget is missing, install Microsoft's App Installer
-first. Existing incompatible FFmpeg builds are reported rather than replaced.
+The Linux add-on must already be installed in that distribution. Normal camera
+operations thereafter are entirely in the web interface. The helper runs while
+that Windows user is signed in, including a locked session/display off. Windows
+sleep, sign-out and shutdown interrupt capture. The helper polls for changes,
+retries failed capture with a delay and stops its owned processes when it loses
+broker communication. A Windows job object cleans up FFmpeg if the helper is
+forcibly stopped. It never kills unrelated FFmpeg processes.
 
-In Ubuntu:
+Windows capture reads the camera through DirectShow, avoiding USB/IP conflicts
+with StarDesk or other remote-access tools. It does not replace drivers, stop
+providers or restart WSL. WSL2 must already have systemd enabled; the installer
+diagnoses absent systemd but does not change its configuration or reboot it.
 
-```sh
-sudo sentinel-usb configure desk --mode windows-publisher \
-  --width 1920 --height 1080 --fps 30 --format mjpeg
-sudo sentinel-usb start desk
-```
+### Optional USB/IP passthrough
 
-In Windows PowerShell, select the exact camera name and start streaming:
-
-```powershell
-.\Start-SentinelWindowsCamera.ps1 -Name desk -CameraName 'YOUR CAMERA NAME'
-```
-
-The script reads the instance's publisher credential through `sudo` in WSL and
-redacts it from FFmpeg output. Enter the Ubuntu password when prompted. The
-requested profile must be supported by the Windows camera; DirectShow rejects
-unsupported modes. Keep the window open; Ctrl+C stops Windows capture. No startup
-task is installed. Windows must remain awake; display-off is different from sleep.
-
-In a second PowerShell window, copy the reader URL privately:
-
-```powershell
-.\Copy-SentinelUsbCameraUrl.ps1 -Name desk
-# Paste into Sentinel only, then clear:
-Set-Clipboard -Value ''
-```
-
-Camera credentials are protected in `/etc/sentinel-usb` and runtime files; FFmpeg
-still receives the publishing URL as a process argument. Local administrators
-can inspect it. Do not paste credential-bearing URLs into chat/issues or logs.
-
-### USB/IP passthrough
-
-In **elevated** Windows PowerShell:
+If a camera should instead be attached to Linux, use `--skip-windows-helper` with
+the Linux USB installer. The advanced Windows installer retains a USB/IP mode:
 
 ```powershell
 .\Install-SentinelWslUsb.ps1 -Backend UsbIp -Distribution Ubuntu
-# Read the listing and choose the camera's current bus ID and VID:PID:
+# Supply the selected camera's CURRENT bus ID and VID:PID:
 .\Install-SentinelWslUsb.ps1 -Backend UsbIp -Distribution Ubuntu -BusId '1-4' -HardwareId '32e4:4801'
 ```
 
-The example IDs must be replaced with the user's selected camera.
-The helper inspects TCP 3240 and its executable owner before making
-changes. An existing healthy compatible provider is reused by absolute path,
-including an app-managed helper. It never kills that process or replaces its
-driver. If no provider exists it installs standalone usbipd through an interactive
-winget installer, allowing a required reboot to be deferred. A provider with
-warnings, an unknown owner or a conflicting listener blocks attachment with an
-actionable WindowsCapture alternative. This does not promise compatibility with
-every vendor fork.
+Those example identifiers must be replaced for the selected physical camera.
+The script checks the owner of TCP 3240, reuses a compatible healthy provider by
+absolute path, and installs standalone usbipd only when no provider exists. It
+refuses unknown/conflicting providers or driver warnings. Only the explicitly
+selected matching device is attached. No force-bind, provider restart or blind
+retry loop is used. Kernel UVC/V4L2 support is still required; USB enumeration
+alone does not prove capture support. Once attached and supported, the camera
+appears in the web picker as Linux. Reattachment after reboot/replug can require
+this advanced installer step; Windows capture is the default for routine web use.
 
-Only the explicitly selected bus ID with matching VID:PID is bound/attached.
-Re-run after replugging to verify identity. Identical VID:PID devices require
-manual selection of the correct physical camera. No force-bind, automatic detach,
-unrelated-device change, WSL shutdown or provider-restart loop is performed.
+## Docker / Dokploy setup
 
-In Ubuntu, verify `sudo sentinel-usb devices` returns camera modes, then use the
-native Linux setup above. USB enumeration alone is insufficient: the WSL kernel
-must support UVC/V4L2. A missing driver may require a supported kernel update or
-the WindowsCapture backend; the installer does not build/replace kernels. While
-attached to WSL the device is unavailable to Windows consumers. See
-[Microsoft's USB/IP documentation](https://learn.microsoft.com/en-us/windows/wsl/connect-usb).
-
-## Docker / remote VMS
-
-An add-on listening on 127.0.0.1 is reachable only on its Linux host. Container
-localhost is **not** host localhost. For a VMS in Docker, explicitly choose a
-reachable private host address with `configure --listen PRIVATE_IP --port 18555`
-and use that address in the camera URL. For native capture on a Docker host, a
-dedicated Docker bridge's gateway address is one option. For WindowsCapture into
-WSL, use a WSL address reachable from both Windows and the VMS container, and
-recheck it after WSL restarts. The tool rejects wildcard and public bind addresses.
-It does not edit Docker networks or firewall rules automatically.
-
-This RTSP link is authenticated but not encrypted: keep it on the same host or a
-trusted private/VPN network. The VMS's HTTPS viewer does not encrypt this separate
-capture hop. The earlier manually deployed Docker bridge is separate and is not
-adopted, stopped or removed by this installer.
-
-## Validation
+The broker runs on the host, alongside Docker, and the VMS must run this branch's
+web/API build. One-time administrator setup must provide the actual VMS process
+UID and a specific private host address reachable from both the VMS container
+and, for Windows capture, Windows:
 
 ```sh
-python3 -m unittest discover -s linux/packaging/usb/tests -v
-bash -n linux/packaging/usb/install.sh
+sudo bash linux/packaging/usb/install.sh --web-uid 65532 --listen-address PRIVATE_HOST_IP
 ```
 
-Windows: `powershell -NoProfile -File linux/packaging/usb/tests/Test-WslProvider.ps1`.
-CI also installs the add-on on Linux and tests synthetic RTSP publish/read plus
-authentication rejection. Hardware acceptance still requires a real Linux USB
-camera and WSL/Windows device tests: unplug/replug, busy camera, reboot, sustained
-capture, image color range, Sentinel playback and recording. These are not proven
-by syntax/unit tests or by the earlier Windows proof of concept.
+`65532` is an example, not a guaranteed image UID. Mount the runtime directory in
+the VMS container at the same path (mount the directory, not the socket inode,
+so broker restarts work):
+
+```yaml
+volumes:
+  - /run/sentinel-usb-control:/run/sentinel-usb-control:ro
+```
+
+Read-only mounting still permits Unix-socket connections; file ownership limits
+control access to the configured VMS UID. Container user-namespace remapping
+requires the corresponding host UID. Do not mount the Docker socket or grant the
+VMS privileged mode for this feature. The local recorder must be connected.
+
+The host address is used automatically when each camera is created. Container
+localhost is not host localhost; default loopback only works for native installs.
+WSL NAT addresses can change after restart. Use stable host networking or recreate
+affected cameras after correcting the install address. Existing camera endpoints
+are preserved on upgrade. Docker networks and firewall rules are not rewritten.
+The earlier manually deployed test bridge is separate and is not adopted or stopped.
+
+## Control and credential boundaries
+
+The root broker exposes only a fixed camera API on local Unix sockets. The VMS
+socket is mode 0600 owned by its configured UID; a separate `sentinel-usb-agent`
+group socket accepts only Windows inventory/status polls and returns publisher
+credentials for requested cameras. It cannot configure cameras or read reader
+credentials. Both browser authentication and Manage Cameras permissions apply;
+device inventory/setup additionally require site-wide camera scope.
+
+Per-camera capture services run as the unprivileged `sentinel-usb` user with video
+group access. Credentials are protected in `/etc/sentinel-usb`, reader passwords
+are encrypted by Sentinel's existing camera store, and browser USB responses
+contain no secrets. FFmpeg still receives its publisher URL as an argument, so
+local administrators can inspect it. RTSP/TCP is authenticated but unencrypted;
+keep the host/container hop on the same machine or trusted private/VPN network.
+No stream port is exposed to the public Internet by the installer.
+
+## Diagnostics and validation
+
+The `sentinel-usb` CLI remains available for administrator diagnostics and legacy
+standalone capture hosts. Legacy CLI cameras are not silently adopted by the web
+UI. Do not edit their credentials or manually repurpose `web-*` configurations.
+
+```sh
+sudo sentinel-usb doctor
+sudo journalctl -u sentinel-usb-control
+python3 -m unittest discover -s linux/packaging/usb/tests -v
+```
+
+CI checks real Linux installation/reinstallation, systemd lifecycle, Unix socket
+permissions, authenticated synthetic RTSP publish/read, role rejection, Windows
+device/mode parsing, argument quoting and owned-process cleanup. Go API tests
+cover permissions, secret boundaries, camera registration, updates, stop/delete,
+and failure cleanup. Dashboard tests/build cover the selection and API contract.
+
+Real hardware acceptance is still required: Windows and native Linux devices,
+busy/unplug/replug, WSL restart, sustained capture, image quality, and Sentinel
+live view/recording/playback. Automated checks do not establish those results.

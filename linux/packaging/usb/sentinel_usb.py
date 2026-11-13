@@ -2,6 +2,7 @@
 """Optional Linux USB capture service; stdlib only, no VMS database access."""
 import argparse
 import glob
+import http.client
 import ipaddress
 import json
 import os
@@ -280,7 +281,8 @@ def doctor():
     bins = tools()
     result = {'wsl': 'microsoft' in Path('/proc/sys/kernel/osrelease').read_text().lower(),
               'tools': bins, 'systemd': Path('/run/systemd/system').exists()}
-    for key, path in bins.items():
+    for key in ('ffmpeg', 'v4l2', 'mediamtx'):
+        path = bins[key]
         if not Path(path).is_file() or not os.access(path, os.X_OK):
             raise ValueError('Missing executable: ' + key + '. Re-run the USB installer.')
     if not re.search(r'\blibx264\b', command([bins['ffmpeg'], '-hide_banner', '-encoders'])):
@@ -288,11 +290,35 @@ def doctor():
     print(json.dumps(result, indent=2))
 
 
+def agent_poll():
+    class Connection(http.client.HTTPConnection):
+        def connect(self):
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.settimeout(15)
+            self.sock.connect('/run/sentinel-usb-control/agent.sock')
+    report = sys.stdin.read(256 * 1024 + 1).lstrip('\ufeff')
+    if len(report) > 256 * 1024:
+        raise ValueError('Agent report too large.')
+    connection = Connection('localhost', timeout=15)
+    try:
+        connection.request('POST', '/poll', report.encode('utf-8'), {'Content-Type': 'application/json'})
+        response = connection.getresponse()
+        content = response.read(256 * 1024)
+        if response.status != 200:
+            raise ValueError('USB agent report was rejected. Check the installed helper version.')
+        print(content.decode('utf-8'))
+    finally:
+        connection.close()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('doctor', help='check installed tools and WSL/systemd status')
     sub.add_parser('devices', help='list accessible V4L2 capture devices and discrete modes')
+    sub.add_parser('agent-poll', help=argparse.SUPPRESS)
+    enroll = sub.add_parser('windows-enroll', help='installer: authorize the WSL user for the Windows helper')
+    enroll.add_argument('user')
     setup = sub.add_parser('configure', help='save a camera without starting capture')
     setup.add_argument('name', type=instance_name)
     setup.add_argument('--mode', choices=['v4l2', 'windows-publisher'], default='v4l2')
@@ -319,6 +345,16 @@ def main(argv=None):
         print(json.dumps(devices(), indent=2))
     elif args.command == 'configure':
         configure(args)
+    elif args.command == 'agent-poll':
+        agent_poll()
+    elif args.command == 'windows-enroll':
+        require_root()
+        import pwd
+        if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,63}[$]?', args.user):
+            raise ValueError('Invalid Linux user name.')
+        pwd.getpwnam(args.user)
+        subprocess.run(['usermod', '-aG', 'sentinel-usb-agent', args.user], check=True)
+        print('Windows helper access enabled for the selected WSL user.')
     elif args.command == 'run':
         run(args.name)
     else:

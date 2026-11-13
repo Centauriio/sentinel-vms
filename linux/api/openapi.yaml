@@ -109,6 +109,98 @@ security:
   - session: []
 
 paths:
+  /api/v2/usb-cameras:
+    get:
+      tags: [cameras]
+      operationId: listUsbCameras
+      summary: List locally connected USB devices, supported modes and capture state (manageCameras, site-wide scope)
+      responses:
+        '200':
+          description: Helper availability, devices and configured USB cameras; never includes connection credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsbInventory' }
+    post:
+      tags: [cameras]
+      operationId: createUsbCamera
+      summary: Add a stopped USB camera to the local recording server (manageCameras, site-wide scope)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, device, profile]
+              properties:
+                name: { type: string, maxLength: 200 }
+                device: { type: string }
+                profile: { $ref: '#/components/schemas/UsbProfile' }
+      responses:
+        '201':
+          description: Configured USB camera
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsbCamera' }
+  /api/v2/usb-cameras/{cameraId}:
+    parameters:
+      - { name: cameraId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [cameras]
+      operationId: updateUsbCamera
+      summary: Update USB capture quality; running capture restarts (manageCameras)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [profile]
+              properties:
+                profile: { $ref: '#/components/schemas/UsbProfile' }
+      responses:
+        '200':
+          description: Updated capture state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsbCamera' }
+  /api/v2/usb-cameras/{cameraId}/start:
+    parameters:
+      - { name: cameraId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [cameras]
+      operationId: startUsbCamera
+      summary: Start USB capture independently of recording settings (manageCameras)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          description: Capture state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsbCamera' }
+  /api/v2/usb-cameras/{cameraId}/stop:
+    parameters:
+      - { name: cameraId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [cameras]
+      operationId: stopUsbCamera
+      summary: Stop USB capture independently of recording settings (manageCameras)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          description: Capture state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsbCamera' }
   /api/v2/openapi.yaml:
     get:
       tags: [system]
@@ -4267,6 +4359,56 @@ components:
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   schemas:
+    UsbProfile:
+      type: object
+      additionalProperties: false
+      required: [format, width, height, fps, bitrate]
+      properties:
+        format: { type: string, enum: [mjpeg, yuyv422, nv12] }
+        width: { type: integer, minimum: 160, maximum: 7680 }
+        height: { type: integer, minimum: 120, maximum: 4320 }
+        fps: { type: number, minimum: 1, maximum: 60 }
+        bitrate: { type: integer, minimum: 128, maximum: 50000 }
+    UsbCamera:
+      type: object
+      required: [cameraId, instance, device, kind, profile, state, requested]
+      properties:
+        cameraId: { type: string }
+        instance: { type: string }
+        device: { type: string }
+        kind: { type: string }
+        profile: { $ref: '#/components/schemas/UsbProfile' }
+        state: { type: string, enum: [running, starting, stopped, failed, helper-offline] }
+        requested: { type: boolean }
+    UsbInventory:
+      type: object
+      required: [available, devices, cameras, windowsOnline]
+      properties:
+        available: { type: boolean }
+        message: { type: string }
+        windowsOnline: { type: boolean }
+        cameras:
+          type: array
+          items: { $ref: '#/components/schemas/UsbCamera' }
+        devices:
+          type: array
+          items:
+            type: object
+            required: [id, name, kind, modes]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              kind: { type: string, enum: [linux, windows] }
+              modes:
+                type: array
+                items:
+                  type: object
+                  required: [format, width, height, fps]
+                  properties:
+                    format: { type: string }
+                    width: { type: integer }
+                    height: { type: integer }
+                    fps: { type: number }
     Error:
       type: object
       required: [error]

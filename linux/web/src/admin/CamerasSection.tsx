@@ -33,6 +33,8 @@ import {
 import { AUDIO_DEFAULT_DB, AUDIO_MAX_DB, AUDIO_MIN_DB, LOITER_MAX_S, audioFormOf, audioPatch, clampAudioDb, clampLoiter, loiterHint, loiterOf, loiterPatch } from "./audioSettings";
 import { v2 } from "./client";
 import RecordingFields from "./RecordingFields";
+import UsbCameraDialog from "./UsbCameraDialog";
+import { usbApi, usbStateLabel, type UsbCamera } from "../shared/usbCameras";
 import { StreamPickerView, useFindStreams } from "./StreamPicker";
 import StreamSettingsDialog from "./StreamSettingsDialog";
 import { ChipPicker, Confirm, Empty, ErrorBanner, Loading, Modal, OnlineBadge, useLiveMessages, useLiveReload } from "./ui";
@@ -73,6 +75,18 @@ const alertChoices: { value: AlertOn; label: string }[] = [
 
 /** `openId`: a deep link (#/admin/devices/cameras?camera=<id>, from Insights) opens that camera's settings. */
 export default function CamerasSection({ openId }: { openId?: string }) {
+  const usb = useLoad(() => usbApi.list(v2), []);
+  const [usbEditing, setUsbEditing] = useState<UsbCamera | "new" | null>(null);
+  const [usbBusy, setUsbBusy] = useState("");
+  const [usbError, setUsbError] = useState("");
+  const usbByID = new Map((usb.data?.cameras ?? []).map(c => [c.cameraId, c]));
+  useEffect(() => { const timer = window.setInterval(() => { void usb.reload(); }, 5000); return () => window.clearInterval(timer); }, [usb.reload]);
+  const controlUSB = async (camera: UsbCamera) => {
+    setUsbBusy(camera.cameraId); setUsbError("");
+    try { await usbApi.control(v2, camera.cameraId, camera.requested ? "stop" : "start"); await usb.reload(); }
+    catch (e) { setUsbError(e instanceof Error ? e.message : "Camera operation failed."); }
+    finally { setUsbBusy(""); }
+  };
   const cameras = useLoad(() => v2.cameras.list(), []);
   const servers = useLoad(() => v2.servers.list(), []);
   const groups = useLoad(() => v2.groups.list(), []);
@@ -122,6 +136,7 @@ export default function CamerasSection({ openId }: { openId?: string }) {
   const reloadAll = () => {
     void cameras.reload();
     void groups.reload();
+    void usb.reload();
   };
 
   return (
@@ -153,10 +168,13 @@ export default function CamerasSection({ openId }: { openId?: string }) {
         >
           Scan network
         </button>
+        <button className="btn" onClick={() => setUsbEditing("new")}>+ Add USB camera</button>
         <button className="btn primary" onClick={() => setEditing("new")} disabled={!servers.data}>
           + Add camera
         </button>
       </div>
+      {usbEditing && <UsbCameraDialog inventory={usb.data} camera={usbEditing === "new" ? undefined : usbEditing} onRefresh={() => { void usb.reload(); }} onClose={() => setUsbEditing(null)} onSaved={() => { setUsbEditing(null); reloadAll(); }} />}
+      <ErrorBanner error={usbError || usb.error} onRetry={() => { setUsbError(""); void usb.reload(); }} />
       <ErrorBanner error={cameras.error || servers.error} onRetry={() => (cameras.reload(), servers.reload())} />
       <div className="card table-wrap">
         {cameras.data === null ? (
@@ -187,6 +205,7 @@ export default function CamerasSection({ openId }: { openId?: string }) {
                   <td>
                     <strong>{c.name}</strong>
                     {isPhone(c) && <PhoneBadge />}
+                    {usbByID.has(c.id) && <span className="badge blue">USB</span>}
                     {c.location && <div className="mono">{c.location}</div>}
                   </td>
                   <td>{serverName.get(c.recorderId) ?? <span className="mono">{c.recorderId || "—"}</span>}</td>
@@ -205,6 +224,7 @@ export default function CamerasSection({ openId }: { openId?: string }) {
                   </td>
                   <td>
                     <StatusCell camera={c} />
+                    {usbByID.has(c.id) && <div className="small" role="status">{usbStateLabel(usbByID.get(c.id)!.state)}</div>}
                   </td>
                   <td>
                     <RecordingCell camera={c} server={recDefaults.data ?? null} />
@@ -213,10 +233,14 @@ export default function CamerasSection({ openId }: { openId?: string }) {
                     <button className="btn small" onClick={() => setEditing(c)}>
                       Edit
                     </button>
-                    <button className="btn small" onClick={() => setMoving(c)} disabled={(servers.data ?? []).filter((s) => !s.revoked).length < 2}>
+                    <button className="btn small" onClick={() => setMoving(c)} disabled={usbByID.has(c.id) || (servers.data ?? []).filter((s) => !s.revoked).length < 2}>
                       Move
                     </button>
-                    {!isPhone(c) && (
+                    {usbByID.has(c.id) && <>
+                      <button className="btn small" onClick={() => setUsbEditing(usbByID.get(c.id)!)}>USB quality…</button>
+                      <button className="btn small" disabled={!!usbBusy || !usb.data?.available} onClick={() => { void controlUSB(usbByID.get(c.id)!); }}>{usbBusy === c.id ? "Working…" : usbByID.get(c.id)!.requested ? "Stop capture" : "Start capture"}</button>
+                    </>}
+                    {!isPhone(c) && !usbByID.has(c.id) && (
                       <button className="btn small" onClick={() => setStreamCam(c)} title={c.onvifUrl ? undefined : "Added without ONVIF"} disabled={!c.onvifUrl}>
                         Stream settings…
                       </button>
@@ -269,6 +293,7 @@ export default function CamerasSection({ openId }: { openId?: string }) {
           ingest={ingest.data}
           onClose={() => setEditing(null)}
           onKeyChanged={reloadAll}
+          usbManaged={editing !== "new" && !("pick" in editing) && usbByID.has(editing.id)}
           phoneAvailable={cloud.data?.phoneCamerasAvailable}
           onSaved={() => {
             setEditing(null);
@@ -504,6 +529,7 @@ export function CameraEditor({
   onClose,
   onSaved,
   initialKind = "rtsp",
+  usbManaged = false,
   onKeyChanged,
   phoneAvailable,
 }: {
@@ -518,6 +544,7 @@ export function CameraEditor({
   onSaved: () => void;
   /** WAVE23(J): a new camera starts as a network camera; "phone" opens on the iPhone instructions. */
   initialKind?: "rtsp" | "phone";
+  usbManaged?: boolean;
   /** GET /api/v2/cloud phoneCamerasAvailable; undefined = unknown (older server, or not readable). */
   phoneAvailable?: boolean;
   /** The phone key was rotated or revoked: reload the list, keep the editor open. */
@@ -642,7 +669,7 @@ export function CameraEditor({
       </div>
       <label className="field">
         <span>Recording server</span>
-        <select value={f.recorderId} onChange={(e) => set("recorderId", e.target.value)} required>
+        <select disabled={usbManaged} value={f.recorderId} onChange={(e) => set("recorderId", e.target.value)} required>
           {!f.recorderId && <option value="">Choose…</option>}
           {usable.map((s) => (
             <option key={s.id} value={s.id}>
@@ -657,7 +684,8 @@ export function CameraEditor({
           <small>{phone ? "The server the iPhone streams to, which records it." : "The server that connects to this camera and records it."}</small>
         )}
       </label>
-      {!phone && (
+      {usbManaged && <p>USB connection settings are managed automatically. Use USB quality and Start/Stop capture in the camera list.</p>}
+      {!phone && !usbManaged && (
         <>
       {profiles.length > 0 && (
         <div className="notice">

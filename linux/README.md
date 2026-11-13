@@ -31,8 +31,8 @@ camera start/stop controls, and supplies an authenticated RTSP source for Sentin
 WSL helpers support USB/IP provider detection and Windows camera capture while
 preserving existing applications such as StarDesk. See the
 [USB add-on guide](packaging/usb/README.md) for device selection, Windows scripts,
-Docker networking, and supported platforms. Camera setup is command-line based;
-installation alone does not start capture.
+Docker networking, and supported platforms. Camera selection, quality and capture
+start/stop are in the Cameras web page; installation alone does not start capture.
 
 ## Live view: WebRTC and HLS
 

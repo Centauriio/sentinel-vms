@@ -23,8 +23,30 @@ if ($Backend -eq 'WindowsCapture') {
     }
     if (-not $ffmpeg) { throw 'Open a new PowerShell window and rerun so PATH includes FFmpeg.' }
     Assert-CaptureFFmpeg $ffmpeg
-    Write-Host 'Windows capture prerequisites are ready. USB/IP providers and drivers were left unchanged.'
-    Write-Host 'Next: configure a windows-publisher camera with sentinel-usb in Ubuntu, then run Start-SentinelWindowsCamera.ps1.'
+    $linuxUser = (Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '--', 'id', '-un')).Trim()
+    if ($linuxUser -notmatch '^[a-z_][a-z0-9_-]*[$]?$') { throw 'Unsupported WSL user name.' }
+    $null = Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '-u', 'root', '--', 'sentinel-usb', 'windows-enroll', $linuxUser)
+    . "$PSScriptRoot\WindowsAgent.Common.ps1"
+    $installDir = Join-Path $env:LOCALAPPDATA 'Sentinel\UsbCamera'
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    $taskName = 'Sentinel USB Camera - ' + (Get-CameraIdentity $Distribution).Substring(8, 12)
+    $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existing) { Stop-ScheduledTask -TaskName $taskName }
+    foreach ($file in @('Run-SentinelWindowsAgent.ps1', 'WindowsAgent.Common.ps1')) {
+        $from = Join-Path $PSScriptRoot $file
+        $to = Join-Path $installDir $file
+        if ([IO.Path]::GetFullPath($from) -ne [IO.Path]::GetFullPath($to)) { Copy-Item -LiteralPath $from -Destination $to -Force }
+    }
+    $arguments = @('-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $installDir 'Run-SentinelWindowsAgent.ps1'), '-Distribution', $Distribution, '-FFmpeg', $ffmpeg)
+    $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument (($arguments | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' ')
+    $user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Trigger $trigger -Force | Out-Null
+    Start-ScheduledTask -TaskName $taskName
+    Write-Host 'Windows camera helper installed and started. Open Sentinel Cameras, then Add USB camera.'
+    Write-Host 'The helper runs while this Windows user is signed in, including when locked. StarDesk is unchanged.'
     exit 0
 }
 
