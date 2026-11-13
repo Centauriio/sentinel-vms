@@ -1,0 +1,43 @@
+name: USB add-on
+on:
+  pull_request:
+    paths: ['linux/packaging/**', 'linux/scripts/build.sh', '.github/workflows/usb-addon.yml']
+  push:
+    branches: [main, codex/linux-usb-addon]
+    paths: ['linux/packaging/**', 'linux/scripts/build.sh', '.github/workflows/usb-addon.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-usb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Unit tests and shell syntax
+        run: |
+          python3 -m unittest discover -s linux/packaging/usb/tests -v
+          bash -n linux/packaging/usb/install.sh
+          sh -n linux/packaging/install.sh
+          bash -n linux/scripts/build.sh
+      - name: Install and exercise authenticated synthetic stream
+        run: |
+          sudo bash linux/packaging/usb/install.sh
+          SENTINEL_USB_INTEGRATION=1 python3 linux/packaging/usb/tests/smoke_linux.py
+          sudo python3 linux/packaging/usb/tests/smoke_control.py
+  windows-provider:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Parse scripts and test provider ownership (no host mutations)
+        shell: powershell
+        run: |
+          Get-ChildItem linux/packaging/usb -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
+          & linux/packaging/usb/tests/Test-WslProvider.ps1
+          & linux/packaging/usb/tests/Test-WindowsAgent.ps1
