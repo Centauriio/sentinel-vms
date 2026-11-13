@@ -3,6 +3,15 @@
 #   sudo ./install.sh
 set -eu
 
+with_usb=false
+case "${1:-}" in
+    --with-usb) with_usb=true; shift ;;
+    --help|-h) echo 'Usage: sudo ./install.sh [--with-usb]'; exit 0 ;;
+    '') ;;
+    *) echo 'Usage: sudo ./install.sh [--with-usb]' >&2; exit 2 ;;
+esac
+[ "$#" -eq 0 ] || { echo 'Unexpected installer arguments' >&2; exit 2; }
+
 if [ "$(id -u)" -ne 0 ]; then
     echo "Run as root: sudo ./install.sh" >&2
     exit 1
@@ -38,6 +47,10 @@ if [ -f "$here/lib/libonnxruntime.so" ] && [ -f "$here/models/yolox_tiny.onnx" ]
 fi
 for f in THIRD-PARTY.txt ffmpeg-LICENSE.txt onnxruntime-LICENSE.txt; do [ -f "$here/$f" ] && install -m 0644 "$here/$f" /opt/sentinel/$f; done
 install -m 0644 "$here/sentinel.service" /etc/systemd/system/sentinel.service
+
+if [ "$with_usb" = true ]; then
+    bash "$here/usb/install.sh"
+fi
 
 systemctl daemon-reload
 systemctl enable sentinel

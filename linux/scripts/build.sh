@@ -169,6 +169,9 @@ Sentinel VMS for Linux bundles these unmodified third-party programs:
 NOTICE
 
     cp "$ROOT/packaging/sentinel.service" "$ROOT/packaging/install.sh" "$ROOT/packaging/docker-compose.yml" "$STAGE/"
+    cp -R "$ROOT/packaging/usb" "$STAGE/usb"
+    # Tests and interpreter caches are development-only.
+    rm -rf "$STAGE/usb/tests" "$STAGE/usb/__pycache__"
     # --no-xattrs/COPYFILE_DISABLE: keep macOS metadata out, or GNU tar on Linux warns on extract.
     # (bsdtar only; GNU tar on Linux CI has no --no-mac-metadata and nothing to strip.)
     TAR_FLAGS=()

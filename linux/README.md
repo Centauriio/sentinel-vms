@@ -22,6 +22,18 @@ Then open `http://<server-ip>:8090` and create the administrator account.
   `sudo ufw allow 8090/tcp && sudo ufw allow 18189`. Without 18189 the
   dashboard still works; live view falls back to HLS (a few seconds behind).
 
+## Optional USB cameras
+
+Install the capture add-on with `sudo ./install.sh --with-usb`, or add it to an
+existing host using `sudo bash linux/packaging/usb/install.sh` from this repository.
+It checks and installs missing prerequisites on Debian/Ubuntu, provides independent
+camera start/stop controls, and supplies an authenticated RTSP source for Sentinel.
+WSL helpers support USB/IP provider detection and Windows camera capture while
+preserving existing applications such as StarDesk. See the
+[USB add-on guide](packaging/usb/README.md) for device selection, Windows scripts,
+Docker networking, and supported platforms. Camera setup is command-line based;
+installation alone does not start capture.
+
 ## Live view: WebRTC and HLS
 
 The Live page plays cameras over **WebRTC** (about half a second behind real
