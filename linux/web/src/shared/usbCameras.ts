@@ -8,6 +8,9 @@ export interface UsbInventory { available: boolean; message?: string; devices: U
 export const usbModeKey = (m: UsbMode) => `${m.format}:${m.width}:${m.height}:${m.fps}`;
 export const usbModeLabel = (m: UsbMode) => `${m.width} × ${m.height} · ${m.fps} fps · ${m.format === "mjpeg" ? "MJPEG" : m.format.toUpperCase()}`;
 export const usbStateLabel = (s: string) => ({ running: "Capturing", stopped: "Stopped", starting: "Starting", failed: "Capture failed", "helper-offline": "Camera helper offline" }[s] ?? "Unavailable");
+// A failed stop can leave capture active after its desired state was cleared.
+// Keep Stop available until the helper confirms that capture is no longer active.
+export const usbShouldStop = (c: UsbCamera) => c.requested || c.state === "running" || c.state === "starting";
 const path = (id: string) => `/api/v2/usb-cameras/${encodeURIComponent(id)}`;
 export const usbApi = {
  list: (c: ApiClient) => c.request<UsbInventory>("get", "/api/v2/usb-cameras"),

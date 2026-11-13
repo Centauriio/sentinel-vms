@@ -34,7 +34,7 @@ import { AUDIO_DEFAULT_DB, AUDIO_MAX_DB, AUDIO_MIN_DB, LOITER_MAX_S, audioFormOf
 import { v2 } from "./client";
 import RecordingFields from "./RecordingFields";
 import UsbCameraDialog from "./UsbCameraDialog";
-import { usbApi, usbStateLabel, type UsbCamera } from "../shared/usbCameras";
+import { usbApi, usbStateLabel, usbShouldStop, type UsbCamera } from "../shared/usbCameras";
 import { StreamPickerView, useFindStreams } from "./StreamPicker";
 import StreamSettingsDialog from "./StreamSettingsDialog";
 import { ChipPicker, Confirm, Empty, ErrorBanner, Loading, Modal, OnlineBadge, useLiveMessages, useLiveReload } from "./ui";
@@ -83,7 +83,7 @@ export default function CamerasSection({ openId }: { openId?: string }) {
   useEffect(() => { const timer = window.setInterval(() => { void usb.reload(); }, 5000); return () => window.clearInterval(timer); }, [usb.reload]);
   const controlUSB = async (camera: UsbCamera) => {
     setUsbBusy(camera.cameraId); setUsbError("");
-    try { await usbApi.control(v2, camera.cameraId, camera.requested ? "stop" : "start"); await usb.reload(); }
+    try { await usbApi.control(v2, camera.cameraId, usbShouldStop(camera) ? "stop" : "start"); await usb.reload(); }
     catch (e) { setUsbError(e instanceof Error ? e.message : "Camera operation failed."); }
     finally { setUsbBusy(""); }
   };
@@ -238,7 +238,7 @@ export default function CamerasSection({ openId }: { openId?: string }) {
                     </button>
                     {usbByID.has(c.id) && <>
                       <button className="btn small" onClick={() => setUsbEditing(usbByID.get(c.id)!)}>USB quality…</button>
-                      <button className="btn small" disabled={!!usbBusy || !usb.data?.available} onClick={() => { void controlUSB(usbByID.get(c.id)!); }}>{usbBusy === c.id ? "Working…" : usbByID.get(c.id)!.requested ? "Stop capture" : "Start capture"}</button>
+                      <button className="btn small" disabled={!!usbBusy || !usb.data?.available} onClick={() => { void controlUSB(usbByID.get(c.id)!); }}>{usbBusy === c.id ? "Working…" : usbShouldStop(usbByID.get(c.id)!) ? "Stop capture" : "Start capture"}</button>
                     </>}
                     {!isPhone(c) && !usbByID.has(c.id) && (
                       <button className="btn small" onClick={() => setStreamCam(c)} title={c.onvifUrl ? undefined : "Added without ONVIF"} disabled={!c.onvifUrl}>
