@@ -21,7 +21,7 @@ if ($modes.Count -ne 2 -or $modes[0].fps -ne 30) { throw 'Invented or duplicated
 $camera=[pscustomobject]@{ instance=('web-'+('a'*24)); url=('rtsp://publisher:'+('b'*48)+'@127.0.0.1:18555/camera'); profile=[pscustomobject]@{ format='mjpeg'; width=1920; height=1080; fps=30; bitrate=4000 } }
 $argsList=@(Get-AgentCaptureArguments $camera $devices[0].captureName)
 if ($argsList -notcontains "video=$($devices[0].captureName)" -or $argsList[-1] -ne $camera.url) { throw 'Capture arguments changed literal device or URL.' }
-foreach ($value in @('', 'plain', 'has space', 'a"b', 'trailing\', 'C:\a b\')) {
+foreach ($value in @('', 'plain', '-d', '--exec', 'Ubuntu', 'has space', 'a"b', 'trailing\', 'C:\a b\')) {
     # Round-trip through a child process; validates Windows quoting rather than mirroring the algorithm.
     # PowerShell -EncodedCommand does not accept positional args, so use a temporary .ps1.
     $probe=Join-Path $env:TEMP ('sentinel-quote-'+[Guid]::NewGuid().ToString('N')+'.ps1')
@@ -30,6 +30,13 @@ foreach ($value in @('', 'plain', 'has space', 'a"b', 'trailing\', 'C:\a b\')) {
         $actual=Invoke-AgentProbe "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @('-NoProfile','-ExecutionPolicy','Bypass','-File',$probe,$value)
         if ($actual -cne $value) { throw 'Native argument round-trip failed.' }
     } finally { Remove-Item -LiteralPath $probe -ErrorAction SilentlyContinue }
+}
+# WSL's raw option parser differs from the usual CommandLineToArgvW contract.
+# --help does not start a distribution; this catches quoted switches on Windows.
+if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+    # Some WSL versions return -1 for help even when the switch is recognized.
+    $wslHelp=Invoke-AgentProbe 'wsl.exe' @('--help') -TimeoutMs 15000 -AllowFailure
+    if (($wslHelp -replace "`0", '') -notmatch '--exec') { throw 'WSL did not recognize its command-line switch.' }
 }
 # Force-closing the job must terminate the assigned child, without touching any other process.
 $job=Initialize-CaptureJob

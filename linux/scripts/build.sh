@@ -84,6 +84,9 @@ echo "==> Dashboard"
 (cd "$ROOT/web" && npm ci --silent && npm run build --silent)
 
 rm -rf "$DIST" && mkdir -p "$DIST/docker" "$CACHE"
+case " $PLATFORMS " in
+    *" linux "*) python3 "$ROOT/scripts/build-usb-addon.py" --output "$DIST" ;;
+esac
 
 [ -f "$CACHE/yolox_tiny.onnx" ] || curl -fsSL -o "$CACHE/yolox_tiny.onnx" "$YOLOX_URL"
 verify "$CACHE/yolox_tiny.onnx" "$YOLOX_SHA256"

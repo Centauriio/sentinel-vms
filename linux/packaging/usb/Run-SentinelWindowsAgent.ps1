@@ -34,7 +34,7 @@ try {
             }
             foreach ($id in $retry.Keys) { if (-not $status.ContainsKey($id)) { $status[$id]='failed' } }
             $report=@{ devices=@($known | Select-Object id,name,modes); status=$status } | ConvertTo-Json -Depth 8 -Compress
-            $answer=Invoke-AgentProbe 'wsl.exe' @('-d',$Distribution,'--','sentinel-usb','agent-poll') -InputText $report -TimeoutMs 8000
+            $answer=Invoke-AgentProbe 'wsl.exe' @('-d',$Distribution,'--exec','sentinel-usb','agent-poll') -InputText $report -TimeoutMs 8000
             $desired=($answer | ConvertFrom-Json).cameras
             foreach ($id in @($running.Keys)) {
                 $match=@($desired | Where-Object { $_.instance -eq $id })

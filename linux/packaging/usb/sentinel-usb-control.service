@@ -8,6 +8,8 @@ User=root
 ExecStart=/usr/bin/python3 /opt/sentinel-usb/usb_control.py
 RuntimeDirectory=sentinel-usb-control
 RuntimeDirectoryMode=0755
+# Docker bind-mounts the directory inode; keep it stable across broker restarts.
+RuntimeDirectoryPreserve=yes
 Restart=on-failure
 RestartSec=5
 UMask=0077

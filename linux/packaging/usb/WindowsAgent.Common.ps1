@@ -33,6 +33,9 @@ public sealed class SentinelCaptureJob : IDisposable {
 
 function ConvertTo-NativeArgument {
     param([AllowEmptyString()][string]$Value)
+    # WSL parses its own switches before the Linux command. Quoted switches such
+    # as "-d" can be treated as the command instead. Quote only when necessary.
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
     # CommandLineToArgvW quoting, including embedded quotes and trailing backslashes.
     return '"' + [regex]::Replace([regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1') + '"'
 }

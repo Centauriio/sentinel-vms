@@ -38,6 +38,25 @@ def main():
     for _ in range(40):
         if Path('/run/sentinel-usb-control/control.sock').exists(): break
         time.sleep(.25)
+    # A container bind mount holds this directory inode, not its pathname.
+    runtime = Path('/run/sentinel-usb-control')
+    inode = runtime.stat().st_ino
+    directory_fd = os.open(runtime, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        subprocess.run(['systemctl', 'stop', 'sentinel-usb-control'], check=True)
+        assert runtime.stat().st_ino == inode, 'Broker stop removed Docker-mounted directory'
+        subprocess.run(['systemctl', 'start', 'sentinel-usb-control'], check=True)
+        for attempt in range(40):
+            try:
+                request('control', 'GET', '/inventory')
+                break
+            except (OSError, RuntimeError):
+                if attempt == 39: raise
+                time.sleep(.25)
+        assert runtime.stat().st_ino == inode
+        assert os.stat('control.sock', dir_fd=directory_fd).st_ino == (runtime / 'control.sock').stat().st_ino
+    finally:
+        os.close(directory_fd)
     try:
         request('agent','GET','/inventory',expected=400)
         request('agent','POST','/poll',report)

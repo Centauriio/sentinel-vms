@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\WslUsb.Common.ps1"
 
-$kernel = Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '--', 'uname', '-r')
+$kernel = Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '--exec', 'uname', '-r')
 if ($kernel -notmatch '(?i)microsoft.*WSL2') { throw 'The selected distribution must be WSL2. No WSL update, shutdown or conversion was attempted.' }
 
 if ($Backend -eq 'WindowsCapture') {
@@ -23,15 +23,22 @@ if ($Backend -eq 'WindowsCapture') {
     }
     if (-not $ffmpeg) { throw 'Open a new PowerShell window and rerun so PATH includes FFmpeg.' }
     Assert-CaptureFFmpeg $ffmpeg
-    $linuxUser = (Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '--', 'id', '-un')).Trim()
+    $linuxUser = (Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '--exec', 'id', '-un')).Trim()
     if ($linuxUser -notmatch '^[a-z_][a-z0-9_-]*[$]?$') { throw 'Unsupported WSL user name.' }
-    $null = Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '-u', 'root', '--', 'sentinel-usb', 'windows-enroll', $linuxUser)
+    $null = Invoke-NativeText 'wsl.exe' @('-d', $Distribution, '-u', 'root', '--exec', 'sentinel-usb', 'windows-enroll', $linuxUser)
     . "$PSScriptRoot\WindowsAgent.Common.ps1"
     $installDir = Join-Path $env:LOCALAPPDATA 'Sentinel\UsbCamera'
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     $taskName = 'Sentinel USB Camera - ' + (Get-CameraIdentity $Distribution).Substring(8, 12)
     $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-    if ($existing) { Stop-ScheduledTask -TaskName $taskName }
+    if ($existing) {
+        Stop-ScheduledTask -TaskName $taskName
+        for ($attempt=0; $attempt -lt 50; $attempt++) {
+            if ((Get-ScheduledTask -TaskName $taskName).State -ne 'Running') { break }
+            Start-Sleep -Milliseconds 200
+        }
+        if ((Get-ScheduledTask -TaskName $taskName).State -eq 'Running') { throw 'Sentinel camera helper did not stop. No files replaced.' }
+    }
     foreach ($file in @('Run-SentinelWindowsAgent.ps1', 'WindowsAgent.Common.ps1')) {
         $from = Join-Path $PSScriptRoot $file
         $to = Join-Path $installDir $file

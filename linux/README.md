@@ -33,6 +33,11 @@ preserving existing applications such as StarDesk. See the
 [USB add-on guide](packaging/usb/README.md) for device selection, Windows scripts,
 Docker networking, and supported platforms. Camera selection, quality and capture
 start/stop are in the Cameras web page; installation alone does not start capture.
+For WSL/Dokploy, the standalone USB package includes `Install-SentinelUsbHost.ps1`
+to configure both Linux and Windows helpers from the hosting Windows PC. It checks
+the selected container and host prerequisites and preserves StarDesk/USB-IP.
+Build this package with `python3 linux/scripts/build-usb-addon.py`, or download
+the `sentinel-usb-addon` artifact from the USB add-on workflow.
 
 ## Live view: WebRTC and HLS
 

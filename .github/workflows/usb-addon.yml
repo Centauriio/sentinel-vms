@@ -1,10 +1,10 @@
 name: USB add-on
 on:
   pull_request:
-    paths: ['linux/packaging/**', 'linux/scripts/build.sh', '.github/workflows/usb-addon.yml']
+    paths: ['linux/packaging/**', 'linux/scripts/build.sh', 'linux/scripts/build-usb-addon.py', '.github/workflows/usb-addon.yml']
   push:
     branches: [main, codex/linux-usb-addon]
-    paths: ['linux/packaging/**', 'linux/scripts/build.sh', '.github/workflows/usb-addon.yml']
+    paths: ['linux/packaging/**', 'linux/scripts/build.sh', 'linux/scripts/build-usb-addon.py', '.github/workflows/usb-addon.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,8 +18,17 @@ jobs:
         run: |
           python3 -m unittest discover -s linux/packaging/usb/tests -v
           bash -n linux/packaging/usb/install.sh
+          bash -n linux/packaging/usb/install-host.sh
           sh -n linux/packaging/install.sh
           bash -n linux/scripts/build.sh
+      - name: Build portable USB add-on
+        run: python3 linux/scripts/build-usb-addon.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-usb-addon
+          path: |
+            linux/dist/sentinel-usb-addon.zip
+            linux/dist/sentinel-usb-addon.zip.sha256
       - name: Install and exercise authenticated synthetic stream
         run: |
           sudo bash linux/packaging/usb/install.sh

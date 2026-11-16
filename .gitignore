@@ -14,6 +14,8 @@ dist/
 *.p12
 *.mobileprovision
 node_modules/
+__pycache__/
+*.py[cod]
 linux/.cache/
 linux/dist/
 linux/web/dist/*
