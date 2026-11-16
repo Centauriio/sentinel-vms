@@ -277,6 +277,15 @@ func (s *Server) saveCamera(r *http.Request, id string, in store.CameraInput) (*
 			return nil, err
 		}
 		in.Source = before.Source // a camera's source never changes (WAVE23)
+		instance, err := s.Store.USBInstance(r.Context(), id)
+		if err != nil {
+			return nil, err
+		}
+		if instance != "" {
+			if in.RTSPURL != before.RTSPURL || in.SubRTSPURL != before.SubRTSPURL || in.Username != before.Username || in.Password != nil || (in.RecorderID != "" && in.RecorderID != before.RecorderID) {
+				return nil, inputError{"USB connection settings are managed by the USB add-on."}
+			}
+		}
 	}
 	if err := normalizeCamera(&in); err != nil {
 		return nil, inputError{err.Error()}
@@ -339,9 +348,20 @@ func (s *Server) handleDeleteCamera(w http.ResponseWriter, r *http.Request) {
 // deleteCamera removes a camera (keeping its recordings), audits it and
 // reapplies the configuration (v1 and v2).
 func (s *Server) deleteCamera(r *http.Request, id string) error {
+	s.usbMu.Lock()
+	defer s.usbMu.Unlock()
 	cam, err := s.Store.Camera(r.Context(), id)
 	if err != nil {
 		return store.ErrNotFound
+	}
+	instance, err := s.Store.USBInstance(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	if instance != "" {
+		if err := s.usbCall(r.Context(), "DELETE", "/cameras/"+instance, nil, nil); err != nil {
+			return err
+		}
 	}
 	if err := s.Store.DeleteCamera(r.Context(), id); err != nil {
 		return err

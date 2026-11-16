@@ -1,0 +1,28 @@
+[Unit]
+Description=Sentinel USB control broker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/sentinel-usb/usb_control.py
+RuntimeDirectory=sentinel-usb-control
+RuntimeDirectoryMode=0755
+# Docker bind-mounts the directory inode; keep it stable across broker restarts.
+RuntimeDirectoryPreserve=yes
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/etc/sentinel-usb
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

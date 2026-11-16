@@ -84,6 +84,9 @@ echo "==> Dashboard"
 (cd "$ROOT/web" && npm ci --silent && npm run build --silent)
 
 rm -rf "$DIST" && mkdir -p "$DIST/docker" "$CACHE"
+case " $PLATFORMS " in
+    *" linux "*) python3 "$ROOT/scripts/build-usb-addon.py" --output "$DIST" ;;
+esac
 
 [ -f "$CACHE/yolox_tiny.onnx" ] || curl -fsSL -o "$CACHE/yolox_tiny.onnx" "$YOLOX_URL"
 verify "$CACHE/yolox_tiny.onnx" "$YOLOX_SHA256"
@@ -169,6 +172,9 @@ Sentinel VMS for Linux bundles these unmodified third-party programs:
 NOTICE
 
     cp "$ROOT/packaging/sentinel.service" "$ROOT/packaging/install.sh" "$ROOT/packaging/docker-compose.yml" "$STAGE/"
+    cp -R "$ROOT/packaging/usb" "$STAGE/usb"
+    # Tests and interpreter caches are development-only.
+    rm -rf "$STAGE/usb/tests" "$STAGE/usb/__pycache__"
     # --no-xattrs/COPYFILE_DISABLE: keep macOS metadata out, or GNU tar on Linux warns on extract.
     # (bsdtar only; GNU tar on Linux CI has no --no-mac-metadata and nothing to strip.)
     TAR_FLAGS=()

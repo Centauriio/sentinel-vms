@@ -34,6 +34,9 @@ jobs:
       - name: Build dashboard
         working-directory: linux/web
         run: npm ci && npm run build
+      - name: USB camera dashboard tests
+        working-directory: linux/web
+        run: npm test -- --run src/admin/UsbCameraDialog.test.tsx src/admin/CamerasSection.test.tsx src/admin/phoneCameras.test.tsx
       - uses: actions/setup-go@v7
         with:
           go-version-file: linux/go.mod

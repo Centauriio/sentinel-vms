@@ -49,7 +49,7 @@ type Server struct {
 	// DescribeStream checks guessed second-stream addresses for cameras on
 	// this server (v2_streams.go); nil = onvif.DescribeVideo. Tests fake it.
 	DescribeStream onvif.DescribeFunc
-	dir     dirState   // directory sign-in: LDAP, OIDC (v2_directory.go)
+	dir            dirState // directory sign-in: LDAP, OIDC (v2_directory.go)
 
 	// iPhone companion
 	Tunnel     *tunnel.Tunnel  // nil = remote access unsupported
@@ -117,7 +117,9 @@ type Server struct {
 	Bus *bus.Bus
 
 	// Edge recording recovery jobs (edge_recovery.go; WAVE9(C))
-	edgeJobs edgeJobsState
+	edgeJobs  edgeJobsState
+	usbMu     sync.Mutex
+	usbClient *http.Client // nil uses the local Unix-socket broker; injectable in tests
 }
 
 // New creates the management side. It has no recording server until

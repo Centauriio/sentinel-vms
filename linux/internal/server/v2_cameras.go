@@ -68,6 +68,13 @@ func (s *Server) moveCamera(r *http.Request, c *store.Camera, to string) error {
 	if c.RecorderID == to {
 		return nil
 	}
+	instance, err := s.Store.USBInstance(r.Context(), c.ID)
+	if err != nil {
+		return err
+	}
+	if instance != "" {
+		return inputError{"USB cameras must stay on their local recording server."}
+	}
 	if err := s.Store.SetCameraRecorder(r.Context(), c.ID, to); err != nil {
 		return err
 	}

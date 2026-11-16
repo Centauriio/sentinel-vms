@@ -1,0 +1,35 @@
+[Unit]
+Description=Sentinel USB camera %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=sentinel-usb
+Group=sentinel-usb
+SupplementaryGroups=video
+ExecStart=/usr/bin/python3 /opt/sentinel-usb/sentinel_usb.py run %i
+RuntimeDirectory=sentinel-usb-%i
+RuntimeDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+DevicePolicy=closed
+DeviceAllow=char-video4linux rw
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

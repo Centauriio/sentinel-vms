@@ -105,7 +105,8 @@ func (s *Server) registerV2(mux *http.ServeMux) {
 	s.registerV2Semantic(mux) // v2_semantic.go
 
 	s.registerV2PhoneCameras(mux) // v2_phone_cameras.go (WAVE23)
-	s.registerV2Uploads(mux)      // v2_uploads.go (WAVE23)
+	s.registerV2USB(mux)
+	s.registerV2Uploads(mux) // v2_uploads.go (WAVE23)
 
 	// Anything else under /api/v2/ is a JSON 404, not the dashboard.
 	mux.HandleFunc("/api/v2/", func(w http.ResponseWriter, _ *http.Request) {
