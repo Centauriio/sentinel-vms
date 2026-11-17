@@ -2,7 +2,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { recordingDefaults, recordingFormOf, type RecCamera, type RecordingForm } from "../shared/recordingModes";
-import { RecordingCell, cameraPatch } from "./CamerasSection";
+import { CameraEditor, RecordingCell, cameraPatch } from "./CamerasSection";
 import { settingsPatch, minFreeLabel } from "./RecordingDefaults";
 import RecordingFields from "./RecordingFields";
 
@@ -115,5 +115,15 @@ describe("server defaults", () => {
     expect(settingsPatch(recordingDefaults, { ...recordingDefaults, defaultMode: "dual", minFreePercent: 10 })).toEqual({ defaultMode: "dual", minFreePercent: 10 });
     expect(minFreeLabel(0)).toBe("Off");
     expect(minFreeLabel(10)).toBe("10%");
+  });
+});
+
+describe("existing USB camera recording settings", () => {
+  it("offers events-only recording while keeping stream credentials managed", () => {
+    const html = renderToStaticMarkup(<CameraEditor camera={{...camera({subRtspUrl:""}), preRollSeconds: 0, postRollSeconds: 0}} servers={[]} groups={[]} recDefaults={recordingDefaults} ingest={null} usbManaged onClose={() => {}} onSaved={() => {}} />);
+    expect(html).toContain("Events only");
+    expect(html).toContain('value="events"');
+    expect(html).toContain("USB connection settings are managed automatically");
+    expect(html).not.toContain('type="password"');
   });
 });

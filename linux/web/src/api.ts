@@ -1,3 +1,5 @@
+import type { CameraRecordingMode } from "./shared/recordingModes";
+
 // Thin typed client for the Sentinel server's /api/v1 endpoints.
 
 export type Role = "Admin" | "Supervisor" | "Operator" | "Viewer";
@@ -18,6 +20,8 @@ export interface Camera {
   subRTSPURL: string;
   username: string;
   hasPassword: boolean;
+  /** Explicit mode when supported; the legacy recording flag alone cannot identify events. */
+  recordingMode?: CameraRecordingMode;
   recording: boolean;
   retentionDays: number;
   motionLevel: number;
